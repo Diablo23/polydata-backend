@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -54,6 +55,17 @@ def _parse_json_string(val: str | list | None) -> list | None:
         return None
 
 
+def _parse_date(val: str | None) -> datetime | None:
+    """Convert an ISO date string to a datetime object."""
+    if val is None:
+        return None
+    try:
+        val = val.replace("Z", "+00:00")
+        return datetime.fromisoformat(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_market(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalise a raw Gamma market object into our DB-friendly shape."""
     outcomes = _parse_json_string(raw.get("outcomes"))
@@ -74,7 +86,6 @@ def parse_market(raw: dict[str, Any]) -> dict[str, Any]:
     is_closed = bool(raw.get("closed", False))
 
     if is_closed and outcome_prices and outcomes and len(outcomes) >= 2:
-        # The outcome whose price is at or near 1.0 is the winner
         if outcome_prices[0] >= 0.99:
             winning_outcome = outcomes[0]
         elif len(outcome_prices) > 1 and outcome_prices[1] >= 0.99:
@@ -96,9 +107,9 @@ def parse_market(raw: dict[str, Any]) -> dict[str, Any]:
         "outcome_prices": outcome_prices,
         "volume": float(raw.get("volumeNum", 0) or 0),
         "liquidity": float(raw.get("liquidityNum", 0) or 0),
-        "start_date": raw.get("startDate"),
-        "end_date": raw.get("endDate"),
-        "closed_time": raw.get("closedTime"),
+        "start_date": _parse_date(raw.get("startDate")),
+        "end_date": _parse_date(raw.get("endDate")),
+        "closed_time": _parse_date(raw.get("closedTime")),
         "category": raw.get("category"),
         "resolution_source": raw.get("resolutionSource"),
         "description": raw.get("description"),
@@ -122,8 +133,8 @@ def parse_event(raw: dict[str, Any]) -> dict[str, Any]:
         "description": raw.get("description"),
         "is_active": bool(raw.get("active", False)),
         "is_closed": bool(raw.get("closed", False)),
-        "start_date": raw.get("startDate"),
-        "end_date": raw.get("endDate"),
+        "start_date": _parse_date(raw.get("startDate")),
+        "end_date": _parse_date(raw.get("endDate")),
         "volume": float(raw.get("volume", 0) or 0),
         "liquidity": float(raw.get("liquidity", 0) or 0),
     }
