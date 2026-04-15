@@ -15,7 +15,7 @@ from app.crawler.backfill import (
     upsert_markets,
     upsert_tags,
 )
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.models import Market
 
 logger = logging.getLogger(__name__)
@@ -64,11 +64,11 @@ async def run_sync() -> dict[str, Any]:
         stats["active_fetched"] = len(all_active)
 
         # Get IDs that we previously tracked as active
-        async with async_session_factory() as session:
+        async with get_session_factory()() as session:
             prev_active_ids = await _get_tracked_active_ids(session)
 
         # Upsert active markets
-        async with async_session_factory() as session:
+        async with get_session_factory()() as session:
             await upsert_markets(session, all_active)
             await session.commit()
 
@@ -82,7 +82,7 @@ async def run_sync() -> dict[str, Any]:
         stats["closed_fetched"] = len(closed_recent)
 
         # Upsert closed markets
-        async with async_session_factory() as session:
+        async with get_session_factory()() as session:
             await upsert_markets(session, closed_recent)
             await session.commit()
 
@@ -112,7 +112,7 @@ async def run_sync() -> dict[str, Any]:
         # ── Backfill price history for newly resolved ───────────
         for m in unique_resolved:
             try:
-                async with async_session_factory() as session:
+                async with get_session_factory()() as session:
                     count = await backfill_price_history(
                         http, session, m["id"], m["condition_id"]
                     )
@@ -125,7 +125,7 @@ async def run_sync() -> dict[str, Any]:
         # ── Re-sync tags ────────────────────────────────────────
         try:
             tags = await gamma.fetch_tags(http)
-            async with async_session_factory() as session:
+            async with get_session_factory()() as session:
                 await upsert_tags(session, tags)
                 await session.commit()
         except Exception as exc:
