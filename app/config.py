@@ -6,29 +6,27 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 
 
-def _derive_db_urls() -> tuple[str, str]:
-    """Derive async and sync database URLs from DATABASE_URL env var.
-    
-    Railway sets DATABASE_URL as postgresql://user:pass@host:port/db
-    We need:
-      - postgresql+asyncpg://... for async SQLAlchemy
-      - postgresql+psycopg2://... for Alembic/sync
-    """
-    raw = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/neh")
-    # Handle various prefixes Railway might use
-    base = raw
-    for prefix in ("postgresql://", "postgres://", "postgresql+asyncpg://", "postgresql+psycopg2://"):
-        if base.startswith(prefix):
-            base = base[len(prefix):]
+def _make_async_url(raw: str) -> str:
+    """Convert any postgres URL to asyncpg format."""
+    for prefix in ("postgresql+asyncpg://", "postgresql+psycopg2://", "postgresql://", "postgres://"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
             break
-    async_url = f"postgresql+asyncpg://{base}"
-    sync_url = f"postgresql+psycopg2://{base}"
-    return async_url, sync_url
+    return f"postgresql+asyncpg://{raw}"
+
+
+def _make_sync_url(raw: str) -> str:
+    """Convert any postgres URL to psycopg2 format."""
+    for prefix in ("postgresql+asyncpg://", "postgresql+psycopg2://", "postgresql://", "postgres://"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+    return f"postgresql+psycopg2://{raw}"
 
 
 class Settings(BaseSettings):
-    # Database — auto-derived from DATABASE_URL
-    database_url: str = ""
+    # Raw DATABASE_URL from Railway (or .env)
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/neh"
     database_url_sync: str = ""
     db_pool_size: int = 10
     db_max_overflow: int = 20
@@ -47,7 +45,6 @@ class Settings(BaseSettings):
 
     # API settings
     api_rate_limit_per_minute: int = 100
-    cors_allow_origins: list[str] = ["*"]
 
     # App
     app_name: str = "Nothing Ever Happens"
@@ -56,12 +53,15 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if not self.database_url or "localhost" in self.database_url:
-            async_url, sync_url = _derive_db_urls()
-            self.database_url = async_url
-            self.database_url_sync = sync_url
+    @property
+    def async_db_url(self) -> str:
+        return _make_async_url(self.database_url)
+
+    @property
+    def sync_db_url(self) -> str:
+        if self.database_url_sync:
+            return _make_sync_url(self.database_url_sync)
+        return _make_sync_url(self.database_url)
 
 
 @lru_cache
