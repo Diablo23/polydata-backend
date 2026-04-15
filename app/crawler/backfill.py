@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.crawler import clob, gamma
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.models import Event, Market, PriceSnapshot, Tag
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ async def run_backfill(skip_prices: bool = False) -> dict[str, int]:
         # ── Tags (fast, do first) ───────────────────────────────
         logger.info("Backfilling tags...")
         tags = await gamma.fetch_tags(http)
-        async with async_session_factory() as session:
+        async with get_session_factory()() as session:
             stats["tags"] = await upsert_tags(session, tags)
             await session.commit()
         logger.info("Upserted %d tags", stats["tags"])
@@ -219,7 +219,7 @@ async def run_backfill(skip_prices: bool = False) -> dict[str, int]:
         chunk_size = 500
         for i in range(0, len(markets), chunk_size):
             chunk = markets[i : i + chunk_size]
-            async with async_session_factory() as session:
+            async with get_session_factory()() as session:
                 count = await upsert_markets(session, chunk)
                 await session.commit()
                 stats["markets"] += count
@@ -233,7 +233,7 @@ async def run_backfill(skip_prices: bool = False) -> dict[str, int]:
             ]
             for i, m in enumerate(markets_with_cid):
                 try:
-                    async with async_session_factory() as session:
+                    async with get_session_factory()() as session:
                         count = await backfill_price_history(
                             http, session, m["id"], m["condition_id"]
                         )
@@ -265,7 +265,7 @@ async def run_backfill(skip_prices: bool = False) -> dict[str, int]:
                 break
             events.extend(page)
             offset += 100
-        async with async_session_factory() as session:
+        async with get_session_factory()() as session:
             stats["events"] = await upsert_events(session, events)
             await session.commit()
         logger.info("Upserted %d events", stats["events"])
