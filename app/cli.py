@@ -15,7 +15,7 @@ import sys
 
 from sqlalchemy import func, select
 
-from app.database import async_session_factory
+from app.database import get_session_factory
 from app.models import Event, Market, PriceSnapshot, Tag
 
 
@@ -50,7 +50,7 @@ async def cmd_start_scheduler() -> None:
 
 
 async def cmd_stats() -> None:
-    async with async_session_factory() as session:
+    async with get_session_factory()() as session:
         total = (await session.execute(select(func.count(Market.id)))).scalar() or 0
         closed = (
             await session.execute(
