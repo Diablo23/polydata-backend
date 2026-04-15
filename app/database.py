@@ -8,7 +8,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# Lazy singletons — avoids creating engine at import time
 _engine = None
 _session_factory = None
 
@@ -19,7 +18,7 @@ def get_engine():
         from app.config import get_settings
         settings = get_settings()
         _engine = create_async_engine(
-            settings.database_url,
+            settings.async_db_url,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
             echo=settings.debug,
