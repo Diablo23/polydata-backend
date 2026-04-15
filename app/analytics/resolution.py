@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from sqlalchemy import Float, case, cast, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Market
@@ -40,15 +40,19 @@ async def compute_overview(session: AsyncSession) -> dict[str, Any]:
     no_rate = (resolved_no / total * 100) if total > 0 else 0
     yes_rate = (resolved_yes / total * 100) if total > 0 else 0
 
-    # Median volume via percentile
-    median_q = select(
-        func.percentile_cont(0.5).within_group(Market.volume).label("median")
-    ).where(
-        Market.is_closed.is_(True),
-        Market.winning_outcome.isnot(None),
-    )
-    median_row = (await session.execute(median_q)).one()
-    median_volume = float(median_row.median or 0)
+    # Median volume — use try/except in case percentile_cont isn't supported
+    median_volume = 0.0
+    try:
+        median_q = select(
+            func.percentile_cont(0.5).within_group(Market.volume).label("median")
+        ).where(
+            Market.is_closed.is_(True),
+            Market.winning_outcome.isnot(None),
+        )
+        median_row = (await session.execute(median_q)).one()
+        median_volume = float(median_row.median or 0)
+    except Exception:
+        logger.warning("percentile_cont failed, using 0 for median")
 
     return {
         "total_markets": total,
@@ -87,8 +91,6 @@ async def compute_by_category(
         )
         .where(*filters)
         .group_by(Market.category)
-        .order_by(func.count(case((Market.resolved_to_no.is_(True), 1))).cast(Float)
-                  / func.count(Market.id).cast(Float).desc())
     )
 
     rows = (await session.execute(q)).all()
